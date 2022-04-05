@@ -1,8 +1,3 @@
-# Copyright (c) # Copyright (c) 2018-2020 CVC.
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
-
 """
 This module implements an agent that roams around a track following random
 waypoints and avoiding other vehicles. The agent also responds to traffic lights.
@@ -51,12 +46,6 @@ class BasicAgent(object):
 
         # Change parameters according to the dictionary
         opt_dict['target_speed'] = target_speed
-        if 'ignore_traffic_lights' in opt_dict:
-            self._ignore_traffic_lights = opt_dict['ignore_traffic_lights']
-        if 'ignore_stop_signs' in opt_dict:
-            self._ignore_stop_signs = opt_dict['ignore_stop_signs']
-        if 'ignore_vehicles' in opt_dict:
-            self._ignore_vehicles = opt_dict['ignore_vehicles']
         if 'sampling_resolution' in opt_dict:
             self._sampling_resolution = opt_dict['sampling_resolution']
         if 'base_tlight_threshold' in opt_dict:
@@ -186,18 +175,6 @@ class BasicAgent(object):
         """Check whether the agent has reached its destination."""
         return self._local_planner.done()
 
-    def ignore_traffic_lights(self, active=True):
-        """(De)activates the checks for traffic lights"""
-        self._ignore_traffic_lights = active
-
-    def ignore_stop_signs(self, active=True):
-        """(De)activates the checks for stop signs"""
-        self._ignore_stop_signs = active
-
-    def ignore_vehicles(self, active=True):
-        """(De)activates the checks for stop signs"""
-        self._ignore_vehicles = active
-
     def _affected_by_traffic_light(self, lights_list=None, max_distance=None):
         """
         Method to check if there is a red light affecting the vehicle.
@@ -207,8 +184,6 @@ class BasicAgent(object):
             :param max_distance (float): max distance for traffic lights to be considered relevant.
                 If None, the base threshold value is used
         """
-        if self._ignore_traffic_lights:
-            return (False, None)
 
         if not lights_list:
             lights_list = self._world.get_actors().filter("*traffic_light*")
@@ -257,8 +232,6 @@ class BasicAgent(object):
             :param max_distance: max freespace to check for obstacles.
                 If None, the base threshold value is used
         """
-        if self._ignore_vehicles:
-            return (False, None, -1)
 
         if not vehicle_list:
             vehicle_list = self._world.get_actors().filter("*vehicle*")
