@@ -121,21 +121,13 @@ class World(object):
         self.agro_vehicles = []
         self.cautious_vehicles = []
         self.normal_vehicles = []
-        self.collision_sensor = None
         self.camera_manager = None
         self.client = client
-        self._weather_presets = find_weather_presets()
-        self._weather_index = 0
         self._actor_filter = args.filter
         self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart()
-        self.recording_enabled = False
-        self.recording_start = 0
-        self.constant_velocity_enabled = False
-        self.show_vehicle_telemetry = False
-        self.doors_are_open = False
-        self.current_map_layer = 0
+
         # traffic manager for normal vehicles
         self.tm1 = self.client.get_trafficmanager()
         self.tm1.set_random_device_seed(9)
@@ -152,23 +144,8 @@ class World(object):
         self.tm3.set_respawn_dormant_vehicles(True)
         self.tm3.set_boundaries_respawn_dormant_vehicles(20, 500)
 
-        self.map_layer_names = [
-            carla.MapLayer.NONE,
-            carla.MapLayer.Buildings,
-            carla.MapLayer.Decals,
-            carla.MapLayer.Foliage,
-            carla.MapLayer.Ground,
-            carla.MapLayer.ParkedVehicles,
-            carla.MapLayer.Particles,
-            carla.MapLayer.Props,
-            carla.MapLayer.StreetLights,
-            carla.MapLayer.Walls,
-            carla.MapLayer.All
-        ]
 
     def restart(self):
-        # self.player_max_speed = 1.589
-        # self.player_max_speed_fast = 3.713
         # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
@@ -199,14 +176,6 @@ class World(object):
             self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
             self.player.set_autopilot(True)
-        
-        # spawn more vehicles
-        #spawn_points = self.map.get_spawn_points()
-        #self.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=15)
-
-        # spawn pedestrians
-        #spawn_points = self.map.get_spawn_points()
-        #spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=80)
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
@@ -315,7 +284,6 @@ class World(object):
             print(len(vehicle_list))
 
     def spawn_cautious_vehicles(self, radius, numbers_of_vehicles, update):
-
         if update == True:
             print('THIS IS ACTUALLY HAPPENING')
             tm_port = self.tm2.get_port()  # get the port of tm. we need add vehicle to tm by this port
@@ -390,11 +358,6 @@ class World(object):
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
-
-    def destroyVehicles(self, typeOfCars):
-        if typeOfCars == 'agro':
-            for vehicle in self.agro_vehicles:
-                vehicle.destroy()
 
 # ==============================================================================
 # -- CameraManager -------------------------------------------------------------
@@ -534,10 +497,6 @@ def game_loop(args):
             traffic_manager = client.get_trafficmanager()
             traffic_manager.set_synchronous_mode(True)
 
-        if args.autopilot and not sim_world.get_settings().synchronous_mode:
-            print("WARNING: You are currently in asynchronous mode and could "
-                  "experience some issues with the traffic simulation")
-
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
@@ -548,23 +507,6 @@ def game_loop(args):
 
         controller = KeyboardControl(world, True)
 
-        static_weather_parameters = [
-            carla.WeatherParameters.ClearNoon,  #0
-            carla.WeatherParameters.CloudyNoon, #1
-            carla.WeatherParameters.WetNoon,     #2
-            carla.WeatherParameters.WetCloudyNoon, #3 
-            carla.WeatherParameters.MidRainyNoon,  #4
-            carla.WeatherParameters.HardRainNoon,  #5
-            carla.WeatherParameters.SoftRainNoon,  #6 
-            carla.WeatherParameters.ClearSunset,   #7
-            carla.WeatherParameters.CloudySunset,  #8
-            carla.WeatherParameters.WetSunset,     #9
-            carla.WeatherParameters.WetCloudySunset, #10
-            carla.WeatherParameters.MidRainSunset,    #11
-            carla.WeatherParameters.HardRainSunset,   #12
-            carla.WeatherParameters.SoftRainSunset,   #13
-        ]
-
         if args.sync:
             sim_world.tick()
         else:
@@ -573,7 +515,6 @@ def game_loop(args):
         clock = pygame.time.Clock()
 
         oldTime = time.time()
-        weather = static_weather_parameters[0] # Clear Noon
 
         while True:
             if args.sync:
@@ -583,38 +524,15 @@ def game_loop(args):
                 return
 
             # Hard Rain Sunset - 1 min marker
-            if time.time() - oldTime >= (10) and time.time() - oldTime < (20) and weather != static_weather_parameters[12]:
-                weather = static_weather_parameters[12]
-                sim_world.set_weather(weather)
+            if time.time() - oldTime >= (10) and time.time() - oldTime < (20):
                 world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=False)
                 #world.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=10)
                 world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=15, update=False)
                 
             # Clear Noon - 2 min marker
-            if time.time() - oldTime >= (20) and time.time() - oldTime < (30) and weather != static_weather_parameters[0]:
-                weather = static_weather_parameters[0]
-                sim_world.set_weather(weather)
+            if time.time() - oldTime >= (20) and time.time() - oldTime < (30):
                 world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=True)
                 world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=1, update=True)
-                
-            # Hard Rain Noon - 3 min marker
-            if time.time() - oldTime >= (30) and time.time() - oldTime < (40) and weather != static_weather_parameters[5]:
-                weather = static_weather_parameters[5]
-                sim_world.set_weather(weather)
-                #world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=True)
-                #world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=25)
-                
-            # Cloudy Sunset - 4 min marker
-            if time.time() - oldTime >= (40) and time.time() - oldTime < (50) and weather != static_weather_parameters[8]:
-                weather = static_weather_parameters[8]
-                sim_world.set_weather(weather)
-                #world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=2)
-
-            # Soft Rain Noon - 5 min marker
-            if time.time() - oldTime >= (50) and time.time() - oldTime < (60) and weather != static_weather_parameters[6]:
-                weather = static_weather_parameters[6]
-                sim_world.set_weather(weather)
-                #world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=1)
 
             world.render(display)
             pygame.display.flip()
