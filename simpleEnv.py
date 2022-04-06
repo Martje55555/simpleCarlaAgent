@@ -95,8 +95,8 @@ class World(object):
             actor_list.append(self.player)
             agent = BasicAgent(self.player)
             agents_list.append(agent)
-            destination = random.choice(spawn_points).location
-            agent.set_destination(destination)
+            #destination = random.choice(spawn_points).location
+            #agent.set_destination(destination)
             #self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
             self.player.set_autopilot(True)
@@ -109,10 +109,10 @@ class World(object):
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(bp, spawn_point)
             actor_list.append(self.player)
-            agent = BasicAgent(self.player)
+            agent = BasicAgent(vehicle=self.player, target_speed=20)
             agents_list.append(agent)
-            destination = random.choice(spawn_points).location
-            agent.set_destination(destination)
+            #destination = random.choice(spawn_points).location
+            #agent.set_destination(destination)
             #self.show_vehicle_telemetry = False
             
             # self.modify_vehicle_physics(self.player)
@@ -334,9 +334,6 @@ def game_loop(args):
 
         if original_settings:
             sim_world.apply_settings(original_settings)
-
-        if (world and world.recording_enabled):
-            client.stop_recorder()
 
         if world is not None:
             world.destroy()

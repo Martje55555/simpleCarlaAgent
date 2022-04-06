@@ -1,9 +1,3 @@
-"""
-This module implements an agent that roams around a track following random
-waypoints and avoiding other vehicles. The agent also responds to traffic lights.
-It can also make use of the global route planner to follow a specifed route
-"""
-
 import carla
 import math
 from enum import Enum
@@ -33,7 +27,8 @@ class BasicAgent(object):
         return control
 
     def set_target_speed(self, speed):
-        v = self.vehicle.get_velocity()
+        control = carla.VehicleControl()
+        v = self._vehicle.get_velocity()
         kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
         if speed < kmh:
             h = 1
@@ -46,10 +41,12 @@ class BasicAgent(object):
 
             if kmh < speed:
                 h += .1
-                self._vehicle.applyControl(throttle=h)
+                control.throttle = h
             else:
                 h -= .1
-                self._vehicle.applyControl(throttle=h)
+                control.throttle = h
+        
+        return control
 
     def run_step(self, action):
 
