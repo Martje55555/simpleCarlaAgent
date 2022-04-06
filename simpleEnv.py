@@ -99,7 +99,7 @@ class World(object):
             agent.set_destination(destination)
             #self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
-            # self.player.set_autopilot(True)
+            self.player.set_autopilot(True)
         while self.player is None:
             if not self.map.get_spawn_points():
                 print('There are no spawn points available in your map/town.')
@@ -116,7 +116,7 @@ class World(object):
             #self.show_vehicle_telemetry = False
             
             # self.modify_vehicle_physics(self.player)
-            #self.player.set_autopilot(True)
+            self.player.set_autopilot(True)
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
@@ -319,13 +319,13 @@ def game_loop(args):
             if controller.parse_events(world):
                 return
 
-            # Hard Rain Sunset - 1 min marker
+            # 1
             if time.time() - oldTime >= (10) and time.time() - oldTime < (20):
-                pass
+                actor_list[0].apply_control(agents_list[0].run_step(0))
                 
-            # Clear Noon - 2 min marker
+            # 2
             if time.time() - oldTime >= (20) and time.time() - oldTime < (30):
-                pass
+                actor_list[0].apply_control(agents_list[0].run_step(1))
 
             world.render(display)
             pygame.display.flip()
