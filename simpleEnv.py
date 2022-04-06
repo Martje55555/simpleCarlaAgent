@@ -24,11 +24,18 @@ import re
 import weakref
 import time
 
+try:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + '/carla')
+except IndexError:
+    pass
+
+from agents.navigation.basic_agent import BasicAgent # pylint: disable=import-error
+
 IM_WIDTH = 2560
 IM_HEIGHT = 1440
 actor_list = []
+agents_list = []
 all_id = []
-walkers_list = []
 normal_vehicles = []
 
 try:
@@ -50,61 +57,6 @@ except ImportError:
 # -- World ---------------------------------------------------------------------
 # ==============================================================================
 
-def spawn_pedestrians(world, client, number_of_pedestrians):
-    # add pedestrians to the world
-    blueprintsWalkers = world.get_blueprint_library().filter("walker.pedestrian.*")
-    walker_bp = random.choice(blueprintsWalkers)
-
-    spawn_points = []
-    for i in range(number_of_pedestrians):
-        spawn_point = carla.Transform()
-        spawn_point.location = world.get_random_location_from_navigation()
-        if (spawn_point.location != None):
-            spawn_points.append(spawn_point)
-
-    batch = []
-    for spawn_point in spawn_points:
-        walker_bp = random.choice(blueprintsWalkers)
-        batch.append(carla.command.SpawnActor(walker_bp, spawn_point))
-
-    # apply the batch
-    results = client.apply_batch_sync(batch, True)
-    for i in range(len(results)):
-        if results[i].error:
-            logging.error(results[i].error)
-        else:
-            walkers_list.append({"id": results[i].actor_id})
-
-    batch = []
-    walker_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
-    for i in range(len(walkers_list)):
-        batch.append(carla.command.SpawnActor(walker_controller_bp, carla.Transform(), walkers_list[i]["id"]))
-
-    # apply the batch
-    results = client.apply_batch_sync(batch, True)
-    for i in range(len(results)):
-        if results[i].error:
-            logging.error(results[i].error)
-        else:
-            walkers_list[i]["con"] = results[i].actor_id
-
-    for i in range(len(walkers_list)):
-        all_id.append(walkers_list[i]["con"])
-        all_id.append(walkers_list[i]["id"])
-    all_actors = world.get_actors(all_id)
-
-    world.wait_for_tick()
-
-    for i in range(0, len(all_actors), 2):
-        # start walker
-        all_actors[i].start()
-        # set walk to random point
-        all_actors[i].go_to_location(world.get_random_location_from_navigation())
-        # random max speed
-        all_actors[i].set_max_speed(1 + random.random())
- 
-    print(len(walkers_list))
-
 class World(object):
     def __init__(self, carla_world, args, client):
         self.world = carla_world
@@ -118,32 +70,10 @@ class World(object):
             print('  Make sure it exists, has the same name of your town, and is correct.')
             sys.exit(1)
         self.player = None
-        self.agro_vehicles = []
-        self.cautious_vehicles = []
-        self.normal_vehicles = []
         self.camera_manager = None
         self.client = client
-        self._actor_filter = args.filter
-        self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart()
-
-        # traffic manager for normal vehicles
-        self.tm1 = self.client.get_trafficmanager()
-        self.tm1.set_random_device_seed(9)
-        self.tm1.set_respawn_dormant_vehicles(True)
-        self.tm1.set_boundaries_respawn_dormant_vehicles(20, 500)
-        # traffic manager for cautius vehicles
-        self.tm2 = self.client.get_trafficmanager()
-        self.tm2.set_random_device_seed(9)
-        self.tm2.set_respawn_dormant_vehicles(True)
-        self.tm2.set_boundaries_respawn_dormant_vehicles(20, 500)
-        # traffic mangaer for aggressiv vehicles
-        self.tm3 = self.client.get_trafficmanager()
-        self.tm3.set_random_device_seed(9)
-        self.tm3.set_respawn_dormant_vehicles(True)
-        self.tm3.set_boundaries_respawn_dormant_vehicles(20, 500)
-
 
     def restart(self):
         # Keep same camera config if the camera manager exists.
@@ -162,9 +92,14 @@ class World(object):
             spawn_point.rotation.pitch = 0.0
             self.destroy()
             self.player = self.world.try_spawn_actor(bp, spawn_point)
-            self.show_vehicle_telemetry = False
+            actor_list.append(self.player)
+            agent = BasicAgent(self.player)
+            agents_list.append(agent)
+            destination = random.choice(spawn_points).location
+            agent.set_destination(destination)
+            #self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
-            self.player.set_autopilot(True)
+            # self.player.set_autopilot(True)
         while self.player is None:
             if not self.map.get_spawn_points():
                 print('There are no spawn points available in your map/town.')
@@ -173,9 +108,15 @@ class World(object):
             spawn_points = self.map.get_spawn_points()
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(bp, spawn_point)
-            self.show_vehicle_telemetry = False
-            self.modify_vehicle_physics(self.player)
-            self.player.set_autopilot(True)
+            actor_list.append(self.player)
+            agent = BasicAgent(self.player)
+            agents_list.append(agent)
+            destination = random.choice(spawn_points).location
+            agent.set_destination(destination)
+            #self.show_vehicle_telemetry = False
+            
+            # self.modify_vehicle_physics(self.player)
+            #self.player.set_autopilot(True)
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
@@ -186,151 +127,6 @@ class World(object):
             self.world.tick()
         else:
             self.world.wait_for_tick()
-
-    def spawn_vehicles_around_ego_vehicles(self, radius, numbers_of_vehicles):
-        spawn_points = self.map.get_spawn_points()
-        np.random.shuffle(spawn_points)  # shuffle  all the spawn points
-        ego_location = self.player.get_location()
-        accessible_points = []
-        for spawn_point in spawn_points:
-            dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
-
-            if dis < radius:
-                print(dis)
-                accessible_points.append(spawn_point)
-
-        vehicle_bps = self.world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
-        vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4
-
-        vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
-        if len(accessible_points) < numbers_of_vehicles:
-            # if your radius is relatively small,the satisfied points may be insufficient
-            numbers_of_vehicles = len(accessible_points)
-
-        for i in range(numbers_of_vehicles):  # generate the free vehicle
-            point = accessible_points[i]
-            vehicle_bp = np.random.choice(vehicle_bps)
-            try:
-                vehicle = self.world.spawn_actor(vehicle_bp, point)
-                vehicle_list.append(vehicle)
-                #actor_list.append(vehicle)
-                self.normal_vehicles.append(vehicle)
-            except:
-                print('failed')  # if failed, print the hints.
-            
-        # add those free vehicle into trafficemanager, and set them to autopilot.
-        tm = self.client.get_trafficmanager()  # create a TM object
-        tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
-        tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
-        tm.set_random_device_seed(9)
-        tm.set_respawn_dormant_vehicles(True)
-        tm.set_boundaries_respawn_dormant_vehicles(20, 500)
-        for v in vehicle_list:  # set every vehicle's mode
-            v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
-            tm.ignore_lights_percentage(v, 0)
-            tm.distance_to_leading_vehicle(v, 5.0)
-            tm.vehicle_percentage_speed_difference(v, -15)
-            tm.update_vehicle_lights(v, True)
-        print(len(vehicle_list))
-
-    def spawn_agro_vehicles(self, radius, numbers_of_vehicles, update):
-        if update:
-            print('THIS IS ACTUALLY HAPPENING')
-            tm_port = self.tm3.get_port()  # get the port of tm. we need add vehicle to tm by this port
-            print(len(self.agro_vehicles))
-            for v in self.agro_vehicles:  # set every vehicle's mode
-                self.tm3.ignore_lights_percentage(v, 0)
-                self.tm3.distance_to_leading_vehicle(v, 5.0)
-                self.tm3.vehicle_percentage_speed_difference(v, -5)
-                self.tm3.update_vehicle_lights(v, True)
-        else:
-            spawn_points = self.map.get_spawn_points()
-            np.random.shuffle(spawn_points)  # shuffle  all the spawn points
-            ego_location = self.player.get_location()
-            accessible_points = []
-            for spawn_point in spawn_points:
-                dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
-                if dis < radius:
-                    print(dis)
-                    accessible_points.append(spawn_point)
-
-            vehicle_bps = self.world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
-            vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4
-
-            vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
-            if len(accessible_points) < numbers_of_vehicles:
-                # if your radius is relatively small,the satisfied points may be insufficient
-                numbers_of_vehicles = len(accessible_points)
-
-            for i in range(numbers_of_vehicles):  # generate the free vehicle
-                point = accessible_points[i]
-                vehicle_bp = np.random.choice(vehicle_bps)
-                try:
-                    vehicle = self.world.spawn_actor(vehicle_bp, point)
-                    vehicle_list.append(vehicle)
-                    #actor_list.append(vehicle)
-                    self.agro_vehicles.append(vehicle)
-                except:
-                    print('failed')  # if failed, print the hints.
-                    
-            self.tm3.global_percentage_speed_difference(10.0)  # set the global speed limitation
-            tm_port = self.tm3.get_port()
-            for v in vehicle_list:  # set every vehicle's mode
-                v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
-                self.tm3.ignore_lights_percentage(v, 100)
-                self.tm3.distance_to_leading_vehicle(v, 0)
-                self.tm3.vehicle_percentage_speed_difference(v, -20)
-                self.tm3.update_vehicle_lights(v, True)
-            print(len(vehicle_list))
-
-    def spawn_cautious_vehicles(self, radius, numbers_of_vehicles, update):
-        if update == True:
-            print('THIS IS ACTUALLY HAPPENING')
-            tm_port = self.tm2.get_port()  # get the port of tm. we need add vehicle to tm by this port
-            print(len(self.cautious_vehicles))
-            for v in self.cautious_vehicles:  # set every vehicle's mode
-                self.tm2.ignore_lights_percentage(v, 0)
-                self.tm2.distance_to_leading_vehicle(v, 5.0)
-                self.tm2.vehicle_percentage_speed_difference(v, -5)
-                self.tm2.update_vehicle_lights(v, True)
-        else:
-            spawn_points = self.map.get_spawn_points()
-            np.random.shuffle(spawn_points)  # shuffle  all the spawn points
-            ego_location = self.player.get_location()
-            accessible_points = []
-            for spawn_point in spawn_points:
-                dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
-                if dis < radius:
-                    print(dis)
-                    accessible_points.append(spawn_point)
-
-            vehicle_bps = self.world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
-            vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4
-
-            vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
-            if len(accessible_points) < numbers_of_vehicles:
-                # if your radius is relatively small,the satisfied points may be insufficient
-                numbers_of_vehicles = len(accessible_points)
-
-            for i in range(numbers_of_vehicles):  # generate the free vehicle
-                point = accessible_points[i]
-                vehicle_bp = np.random.choice(vehicle_bps)
-                try:
-                    vehicle = self.world.spawn_actor(vehicle_bp, point)
-                    vehicle_list.append(vehicle)
-                    self.cautious_vehicles.append(vehicle)
-                except:
-                    print('failed')  # if failed, print the hints.
-            
-            #tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
-            tm_port = self.tm2.get_port()  # get the port of tm. we need add vehicle to tm by this port
-            for v in vehicle_list:  # set every vehicle's mode
-                v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
-                self.tm2.distance_to_leading_vehicle(v, 5.0)
-                self.tm2.vehicle_percentage_speed_difference(v, 80)
-                self.tm2.update_vehicle_lights(v, True)
-                self.tm2.auto_lane_change(v, False)
-            print(len(vehicle_list))
 
     def modify_vehicle_physics(self, actor):
         #If actor is not a vehicle, we cannot use the physics control
@@ -525,14 +321,11 @@ def game_loop(args):
 
             # Hard Rain Sunset - 1 min marker
             if time.time() - oldTime >= (10) and time.time() - oldTime < (20):
-                world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=False)
-                #world.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=10)
-                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=15, update=False)
+                pass
                 
             # Clear Noon - 2 min marker
             if time.time() - oldTime >= (20) and time.time() - oldTime < (30):
-                world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=True)
-                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=1, update=True)
+                pass
 
             world.render(display)
             pygame.display.flip()
@@ -582,16 +375,6 @@ def main():
         metavar='WIDTHxHEIGHT',
         default='2560x1440',
         help='window resolution (default: 2560x1440)')
-    argparser.add_argument(
-        '--filter',
-        metavar='PATTERN',
-        default='vehicle.*',
-        help='actor filter (default: "vehicle.*")')
-    argparser.add_argument(
-        '--generation',
-        metavar='G',
-        default='2',
-        help='restrict to certain actor generation (values: "1","2","All" - default: "All")')
     argparser.add_argument(
         '--rolename',
         metavar='NAME',

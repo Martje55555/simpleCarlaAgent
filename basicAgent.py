@@ -7,37 +7,17 @@ It can also make use of the global route planner to follow a specifed route
 import carla
 from enum import Enum
 from shapely.geometry import Polygon
-from agents.navigation.local_planner import LocalPlanner
-from agents.navigation.global_route_planner import GlobalRoutePlanner
-from agents.tools.misc import get_speed, is_within_distance, get_trafficlight_trigger_location, compute_distance
+
 
 
 class BasicAgent(object):
-    """
-    BasicAgent implements an agent that navigates the scene.
-    This agent respects traffic lights and other vehicles, but ignores stop signs.
-    It has several functions available to specify the route that the agent must follow,
-    as well as to change its parameters in case a different driving mode is desired.
-    """
 
     def __init__(self, vehicle, target_speed=20, opt_dict={}):
-        """
-        Initialization the agent paramters, the local and the global planner.
-
-            :param vehicle: actor to apply to agent logic onto
-            :param target_speed: speed (in Km/h) at which the vehicle will move
-            :param opt_dict: dictionary in case some of its parameters want to be changed.
-                This also applies to parameters related to the LocalPlanner.
-        """
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self._map = self._world.get_map()
-        self._last_traffic_light = None
 
         # Base parameters
-        self._ignore_traffic_lights = False
-        self._ignore_stop_signs = False
-        self._ignore_vehicles = False
         self._target_speed = target_speed
         self._sampling_resolution = 2.0
         self._base_tlight_threshold = 5.0  # meters
