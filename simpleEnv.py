@@ -30,13 +30,14 @@ except IndexError:
     pass
 
 from agents.navigation.basic_agent import BasicAgent # pylint: disable=import-error
+from agents.navigation.crest import randNum # pylint: disable=import-error
 
 IM_WIDTH = 2560
 IM_HEIGHT = 1440
 actor_list = []
 agents_list = []
 all_id = []
-normal_vehicles = []
+vehicles = []
 
 try:
     import pygame
@@ -52,6 +53,10 @@ try:
     import numpy as np
 except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
+
+def get_speed_km(v):
+    kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
+    return kmh
 
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
@@ -93,13 +98,15 @@ class World(object):
             self.destroy()
             self.player = self.world.try_spawn_actor(bp, spawn_point)
             actor_list.append(self.player)
+            vehicles.append(self.player)
             agent = BasicAgent(self.player)
             agents_list.append(agent)
+
             #destination = random.choice(spawn_points).location
             #agent.set_destination(destination)
             #self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
-            self.player.set_autopilot(True)
+            #self.player.set_autopilot(True)
         while self.player is None:
             if not self.map.get_spawn_points():
                 print('There are no spawn points available in your map/town.')
@@ -109,6 +116,7 @@ class World(object):
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(bp, spawn_point)
             actor_list.append(self.player)
+            vehicles.append(self.player)
             agent = BasicAgent(vehicle=self.player, target_speed=20)
             agents_list.append(agent)
             #destination = random.choice(spawn_points).location
@@ -116,7 +124,7 @@ class World(object):
             #self.show_vehicle_telemetry = False
             
             # self.modify_vehicle_physics(self.player)
-            self.player.set_autopilot(True)
+            #self.player.set_autopilot(True)
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
@@ -238,12 +246,12 @@ class CameraManager(object):
 
 class KeyboardControl(object):
     """Class that handles keyboard input."""
-    def __init__(self, world, start_in_autopilot):
-        self._autopilot_enabled = start_in_autopilot
+    def __init__(self, world):#, start_in_autopilot):
+        #self._autopilot_enabled = start_in_autopilot
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             self._lights = carla.VehicleLightState.NONE
-            world.player.set_autopilot(self._autopilot_enabled)
+            #world.player.set_autopilot(self._autopilot_enabled)
             world.player.set_light_state(self._lights)
         else:
             raise NotImplementedError("Actor type not supported")
@@ -257,11 +265,11 @@ class KeyboardControl(object):
                 if self._is_quit_shortcut(event.key):
                     return True
                 elif event.key == K_BACKSPACE:
-                    if self._autopilot_enabled:
-                        world.restart()
-                        world.player.set_autopilot(True)
-                    else:
-                        world.restart()
+                    # if self._autopilot_enabled:
+                    #     world.restart()
+                    #     world.player.set_autopilot(False)
+                    #if:
+                    world.restart()
 
     @staticmethod
     def _is_quit_shortcut(key):
@@ -301,7 +309,7 @@ def game_loop(args):
 
         world = World(sim_world, args, client)
 
-        controller = KeyboardControl(world, True)
+        controller = KeyboardControl(world)
 
         if args.sync:
             sim_world.tick()
@@ -319,14 +327,34 @@ def game_loop(args):
             if controller.parse_events(world):
                 return
 
+            actor_list[0].apply_control(agents_list[0].run_step())
+
             # 1
             if time.time() - oldTime >= (10) and time.time() - oldTime < (20):
-                actor_list[0].apply_control(agents_list[0].run_step(0))
-                
-            # 2
-            if time.time() - oldTime >= (20) and time.time() - oldTime < (30):
-                actor_list[0].apply_control(agents_list[0].run_step(1))
+                print("HERE1")
+                print("speed before", get_speed_km(v=vehicles[0].get_velocity()))
+                # vehicles[0].apply_control(agents_list[0].run_step(action=0))
+                agents_list[0].set_target_speed(action=randNum.returnRand())
 
+            if time.time() - oldTime >= (20) and time.time() - oldTime < (30):
+                print("HERE2")
+                print("speed before", get_speed_km(v=vehicles[0].get_velocity()))
+                # vehicles[0].apply_control(agents_list[0].run_step(action=0))
+                agents_list[0].set_target_speed(action=randNum.returnRand())
+
+            if time.time() - oldTime >= (30) and time.time() - oldTime < (40):
+                print("HERE3")
+                print("speed before", get_speed_km(v=vehicles[0].get_velocity()))
+                # vehicles[0].apply_control(agents_list[0].run_step(action=0))
+                agents_list[0].set_target_speed(action=randNum.returnRand())
+                
+                
+                
+            # # 2
+            # if time.time() - oldTime >= (20) and time.time() - oldTime < (30):
+            #     vehicles[0].apply_control(agents_list[0].run_step(4))
+                
+            print("speed after", get_speed_km(v=vehicles[0].get_velocity()))
             world.render(display)
             pygame.display.flip()
    
@@ -365,7 +393,7 @@ def main():
         help='TCP port to listen to (default: 2000)')
     argparser.add_argument(
         '-a', '--autopilot',
-        action='store_true',
+        action='store_false',
         help='enable autopilot')
     argparser.add_argument(
         '--res',
